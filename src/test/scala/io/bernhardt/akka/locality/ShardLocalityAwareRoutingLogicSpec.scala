@@ -36,6 +36,7 @@ class ShardLocalityAwareRoutingLogicSpec extends TestKit(ActorSystem("ShardLocal
 
     "retrieve shard state on startup and use it in order to route messages" in {
 
+      // use system identifier in order to simulate running on multiple nodes
       val system1 = ActorSystem("node1")
       val system2 = ActorSystem("node2")
       val system3 = ActorSystem("node3")
@@ -78,7 +79,12 @@ class ShardLocalityAwareRoutingLogicSpec extends TestKit(ActorSystem("ShardLocal
         logic.select(TestMessage(i), allRoutees) shouldEqual ActorRefRoutee(routee3.ref)
       }
 
+      TestKit.shutdownActorSystem(system1)
+      TestKit.shutdownActorSystem(system2)
+      TestKit.shutdownActorSystem(system3)
+
     }
+
   }
 
 

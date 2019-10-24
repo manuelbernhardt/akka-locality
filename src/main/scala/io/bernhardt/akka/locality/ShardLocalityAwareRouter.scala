@@ -4,35 +4,118 @@ import java.net.URLEncoder
 import java.util.concurrent.{ThreadLocalRandom, TimeUnit}
 import java.util.concurrent.atomic.AtomicReference
 
-import akka.actor.{Actor, ActorIdentity, ActorLogging, ActorRef, ActorSystem, Address, DeadLetterSuppression, ExtendedActorSystem, Identify, Props, RootActorPath, Terminated}
+import akka.actor._
 import akka.cluster.sharding.ShardRegion
-import akka.cluster.sharding.ShardRegion.{ClusterShardingStats, GetClusterShardingStats, ShardId, ShardRegionStats}
+import akka.cluster.sharding.ShardRegion._
+import akka.dispatch.Dispatchers
 import akka.event.Logging
-import akka.routing.{ActorRefRoutee, ActorSelectionRoutee, NoRoutee, Routee, RoutingLogic}
+import akka.routing._
 import akka.util.Timeout
 import akka.pattern.{AskTimeoutException, ask}
+import akka.japi.Util.immutableSeq
 
+import scala.collection.immutable
 import scala.concurrent.duration._
 import scala.collection.immutable.IndexedSeq
 import scala.concurrent.Future
 import scala.util.control.NonFatal
 
 /*
-
-  router constructor as a by-name param or function in lambda api
-
   doc: router must be deployed on all / same nodes partaking in sharding
+*/
 
-  TODO we could buffer deliveries until cluster sharding state is known
+object ShardLocalityAwareRouter {
+  def extractEntityIdFrom(messageExtractor: MessageExtractor): ShardRegion.ExtractEntityId = {
+    case msg if messageExtractor.entityId(msg) ne null =>
+      (messageExtractor.entityId(msg), messageExtractor.entityMessage(msg))
+  }
+}
 
+@SerialVersionUID(1L)
+final case class ShardLocalityAwareGroup(
+  routeePaths: immutable.Iterable[String],
+  shardRegion: ActorRef,
+  extractEntityId: ShardRegion.ExtractEntityId,
+  extractShardId: ShardRegion.ExtractShardId,
+  override val routerDispatcher: String = Dispatchers.DefaultDispatcherId) extends Group {
 
-- Router API for creation with extractEntityId AND MessageExtractor (Scala and Java)
-      extractEntityId = {
-        case msg if messageExtractor.entityId(msg) ne null =>
-          (messageExtractor.entityId(msg), messageExtractor.entityMessage(msg))
-      },
+  /**
+   * Java API
+   *
+   * @param routeePaths string representation of the actor paths of the routees, messages are
+   *                    sent with [[akka.actor.ActorSelection]] to these paths
+   * @param shardRegion the reference to the shard region
+   * @param messageExtractor the [[akka.cluster.sharding.ShardRegion.MessageExtractor]] used for the sharding
+   *                         of the entities this router should optimize routing for
+   */
+  def this(routeePaths: java.lang.Iterable[String], shardRegion: ActorRef, messageExtractor: MessageExtractor) =
+    this(
+      immutableSeq(routeePaths),
+      shardRegion,
+      ShardLocalityAwareRouter.extractEntityIdFrom(messageExtractor),
       extractShardId = msg => messageExtractor.shardId(msg),
- */
+    )
+
+  /**
+   * Setting the dispatcher to be used for the router head actor,  which handles
+   * supervision, death watch and router management messages.
+   */
+  def withDispatcher(dispatcherId: String): ShardLocalityAwareGroup = copy(routerDispatcher = dispatcherId)
+
+  override def paths(system: ActorSystem): immutable.Iterable[String] = routeePaths
+
+  override def createRouter(system: ActorSystem): Router =
+    new Router(ShardLocalityAwareRoutingLogic(system, shardRegion, extractEntityId, extractShardId))
+}
+
+@SerialVersionUID(1L)
+final case class ShardLocalityAwarePool(
+  nrOfInstances: Int,
+  override val resizer: Option[Resizer] = None,
+  shardRegion: ActorRef,
+  extractEntityId: ShardRegion.ExtractEntityId,
+  extractShardId: ShardRegion.ExtractShardId,
+  override val supervisorStrategy: SupervisorStrategy = Pool.defaultSupervisorStrategy,
+  override val routerDispatcher: String = Dispatchers.DefaultDispatcherId,
+  override val usePoolDispatcher: Boolean = false) extends Pool {
+
+  /**
+   * Java API
+   *
+   * @param nrOfInstances how many routees this pool router should have
+   * @param shardRegion the reference to the shard region
+   * @param messageExtractor the [[akka.cluster.sharding.ShardRegion.MessageExtractor]] used for the sharding
+   *                         of the entities this router should optimize routing for
+   */
+  def this(nrOfInstances: Int, shardRegion: ActorRef, messageExtractor: MessageExtractor) =
+    this(
+      nrOfInstances = nrOfInstances,
+      shardRegion = shardRegion,
+      extractEntityId = ShardLocalityAwareRouter.extractEntityIdFrom(messageExtractor),
+      extractShardId = msg => messageExtractor.shardId(msg)
+    )
+
+  /**
+   * Setting the supervisor strategy to be used for the “head” Router actor.
+   */
+  def withSupervisorStrategy(strategy: SupervisorStrategy): ShardLocalityAwarePool = copy(supervisorStrategy = strategy)
+
+  /**
+   * Setting the resizer to be used.
+   */
+  def withResizer(resizer: Resizer): ShardLocalityAwarePool = copy(resizer = Some(resizer))
+
+  /**
+   * Setting the dispatcher to be used for the router head actor,  which handles
+   * supervision, death watch and router management messages.
+   */
+  def withDispatcher(dispatcherId: String): ShardLocalityAwarePool = copy(routerDispatcher = dispatcherId)
+
+  override def createRouter(system: ActorSystem): Router =
+    new Router(ShardLocalityAwareRoutingLogic(system, shardRegion, extractEntityId, extractShardId))
+
+  override def nrOfInstances(sys: ActorSystem): Int = this.nrOfInstances
+}
 
 final case class ShardLocalityAwareRoutingLogic(
   system: ActorSystem,
@@ -159,7 +242,7 @@ private[locality] class ShardStateMonitor(shardRegion: ActorRef) extends Actor w
   def watchShards(regions: Map[Address, ShardRegionStats]): Unit = {
     val encodedRegionName = shardRegion.path.name
     regions.foreach { case (address, regionStats) =>
-      val regionPath = RootActorPath(address) / clusterGuardianName / encodedRegionName
+      val regionPath = RootActorPath(address) / "system" / clusterGuardianName / encodedRegionName
       regionStats.stats.keys.filterNot(watchedShards).foreach { shardId =>
         val shardPath = regionPath / encodeShardId(shardId)
         context.actorSelection(shardPath) ! Identify(shardId)
