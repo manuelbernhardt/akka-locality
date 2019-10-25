@@ -19,13 +19,21 @@ In order to use these routers, the `Locality` extension must be started:
 
 ### Scala
 
-    import io.bernhardt.akka.locality._
-    Locality(system)
+```scala
+import io.bernhardt.akka.locality._
+
+val system: ActorSystem = ...
+Locality(system)
+```
 
 ### Java
 
-    import io.bernhardt.akka.locality;
-    Locality.get(system);
+```java
+import io.bernhardt.akka.locality;
+
+ActorSystem system = ...;
+Locality.get(system);
+```
     
 You can then use the group or pool routers as a cluster-aware router. These routers must be declared in code, as they
 require to be passed elements from the sharding setup:
