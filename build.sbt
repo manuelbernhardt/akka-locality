@@ -9,9 +9,7 @@ lazy val `akka-locality` = project
   .settings(multiJvmSettings: _*)
   .settings(
     name := "akka-locality",
-    organization := "io.bernhardt",
-    organizationName := "manuel.bernhardt.io",
-    version := "1.0",
+    version := "1.0.0",
     startYear := Some(2019),
     scalaVersion := "2.12.6",
     scalacOptions ++= Seq(
@@ -31,5 +29,40 @@ lazy val `akka-locality` = project
       "org.iq80.leveldb" % "leveldb" % "0.12" % "optional;provided;multi-jvm;test",
       "commons-io" % "commons-io" % "2.6" % Test,
       "org.scalatest" %% "scalatest" % "3.0.5" % Test
-    )
+    ),
+    useGpg := true,
+    credentials += Credentials(Path.userHome / ".sbt" / "sonatype_credential")
   )
+
+val publishingSettings = Seq(
+  ThisBuild / organization := "io.bernhardt",
+  ThisBuild / organizationName := "manuel.bernhardt.io",
+  ThisBuild / organizationHomepage := Some(url("https://manuel.bernhardt.io")),
+
+  ThisBuild / scmInfo := Some(
+    ScmInfo(
+      url("https://github.com/manuelbernhardt/akka-locality"),
+      "scm:git@github.com:manuelbernhardt/akka-locality.git"
+    )
+  ),
+  ThisBuild / developers := List(
+    Developer(
+      id    = "manuel",
+      name  = "Manuel Bernhardt",
+      email = "manuel@bernhardt.io",
+      url   = url("https://manuel.bernhardt.io")
+    )
+  ),
+  ThisBuild / description := "Akka extension to make better use of locality of actors in clustered systems",
+  ThisBuild / licenses := List("Apache 2" -> new URL("http://www.apache.org/licenses/LICENSE-2.0.txt")),
+  ThisBuild / homepage := Some(url("https://github.com/manuelbernhardt/akka-locality")),
+
+    // Remove all additional repository other than Maven Central from POM
+    ThisBuild / pomIncludeRepository := { _ => false },
+    ThisBuild / publishTo := {
+    val nexus = "https://oss.sonatype.org/"
+    if (isSnapshot.value) Some("snapshots" at nexus + "content/repositories/snapshots")
+    else Some("releases" at nexus + "service/local/staging/deploy/maven2")
+  },
+  ThisBuild / publishMavenStyle := true
+)
