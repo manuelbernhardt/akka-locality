@@ -1,20 +1,21 @@
-package io.bernhardt.akka.locality
+package io.bernhardt.akka.locality.router
 
 import akka.actor.{Actor, ActorRef, Address, Props}
 import akka.cluster.Cluster
 import akka.cluster.routing.{ClusterRouterGroup, ClusterRouterGroupSettings}
 import akka.cluster.sharding.{MultiNodeClusterShardingConfig, MultiNodeClusterShardingSpec, ShardRegion}
+import akka.pattern.ask
 import akka.remote.testconductor.RoleName
 import akka.remote.testkit.STMultiNodeSpec
 import akka.routing.{GetRoutees, Routees}
-import akka.testkit.{DefaultTimeout, ImplicitSender, TestProbe}
-import akka.pattern.ask
 import akka.serialization.jackson.CborSerializable
+import akka.testkit.{DefaultTimeout, ImplicitSender, TestProbe}
+import io.bernhardt.akka.locality.Locality
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
 
-object ShardLocalityAwareRouterSpec {
+object ShardLocationAwareRouterSpec {
 
   class TestEntity extends Actor {
     val cluster = Cluster(context.system)
@@ -52,7 +53,7 @@ object ShardLocalityAwareRouterSpec {
 }
 
 
-object ShardLocalityAwareRouterSpecConfig extends MultiNodeClusterShardingConfig {
+object ShardLocationAwareRouterSpecConfig extends MultiNodeClusterShardingConfig {
   val first = role("first")
   val second = role("second")
   val third = role("third")
@@ -60,23 +61,25 @@ object ShardLocalityAwareRouterSpecConfig extends MultiNodeClusterShardingConfig
   val fifth = role("fifth")
 }
 
-class ShardLocalityAwareRouterSpecMultiJvmNode1 extends ShardLocalityAwareRouterSpec
-class ShardLocalityAwareRouterSpecMultiJvmNode2 extends ShardLocalityAwareRouterSpec
-class ShardLocalityAwareRouterSpecMultiJvmNode3 extends ShardLocalityAwareRouterSpec
-class ShardLocalityAwareRouterSpecMultiJvmNode4 extends ShardLocalityAwareRouterSpec
-class ShardLocalityAwareRouterSpecMultiJvmNode5 extends ShardLocalityAwareRouterSpec
+class ShardLocationAwareRouterSpecMultiJvmNode1 extends ShardLocationAwareRouterSpec
+class ShardLocationAwareRouterSpecMultiJvmNode2 extends ShardLocationAwareRouterSpec
+class ShardLocationAwareRouterSpecMultiJvmNode3 extends ShardLocationAwareRouterSpec
+class ShardLocationAwareRouterSpecMultiJvmNode4 extends ShardLocationAwareRouterSpec
+class ShardLocationAwareRouterSpecMultiJvmNode5 extends ShardLocationAwareRouterSpec
 
-class ShardLocalityAwareRouterSpec extends MultiNodeClusterShardingSpec(ShardLocalityAwareRouterSpecConfig)
+class ShardLocationAwareRouterSpec extends MultiNodeClusterShardingSpec(ShardLocationAwareRouterSpecConfig)
   with STMultiNodeSpec
   with DefaultTimeout
   with ImplicitSender {
 
-  import ShardLocalityAwareRouterSpecConfig._
-  import ShardLocalityAwareRouterSpec._
+  import ShardLocationAwareRouterSpec._
+  import ShardLocationAwareRouterSpecConfig._
 
   var region: Option[ActorRef] = None
 
   var router: ActorRef = ActorRef.noSender
+
+  Locality(system)
 
   def joinAndAllocate(node: RoleName, entityIds: Range): Unit = {
     within(10.seconds) {
@@ -122,7 +125,7 @@ class ShardLocalityAwareRouterSpec extends MultiNodeClusterShardingSpec(ShardLoc
         system.actorOf(Props(new TestRoutee(r)), "routee")
         enterBarrier("routee-started")
 
-        router = system.actorOf(ClusterRouterGroup(ShardLocalityAwareGroup(
+        router = system.actorOf(ClusterRouterGroup(ShardLocationAwareGroup(
           routeePaths = Nil,
           shardRegion = r,
           extractEntityId = extractEntityId,
@@ -187,13 +190,15 @@ class ShardLocalityAwareRouterSpec extends MultiNodeClusterShardingSpec(ShardLoc
       }
 
       // we should be receiving messages even in the absence of the updated shard location information
-      // random routing will kick in
+      // random routing should kick in, i.e. we won't have perfect matches
       val randomRoutedMessages: Seq[Pong] = rebalanceProbe.receiveN(10, 15.seconds).collect { case p: Pong => p }
       val (_, differentMsgs) = partitionByAddress(randomRoutedMessages)
       differentMsgs.nonEmpty shouldBe true
 
-      // now give the new shards time to be allocated and the router the time to retrieve new information
-      Thread.sleep(15000)
+      // now give time to the new shards to be allocated and time to the router to retrieve new information
+      // TODO find a better way to determine that the router is ready
+
+      Thread.sleep(10000)
 
       val probe = TestProbe("probe")
       for (i <- 1 to 50) {
@@ -202,7 +207,7 @@ class ShardLocalityAwareRouterSpec extends MultiNodeClusterShardingSpec(ShardLoc
 
       val msgs: Seq[Pong] = probe.receiveN(50, 15.seconds).collect { case p: Pong => p }
 
-      val (same: Seq[Pong], different) = msgs.partition { case Pong(_, _, routeeAddress, entityAddress) =>
+      val (_, different) = msgs.partition { case Pong(_, _, routeeAddress, entityAddress) =>
         routeeAddress.hostPort == entityAddress.hostPort && routeeAddress.hostPort.nonEmpty
       }
 

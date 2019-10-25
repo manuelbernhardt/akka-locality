@@ -1,27 +1,30 @@
-package io.bernhardt.akka.locality
+package io.bernhardt.akka.locality.router
 
 import akka.actor.ActorSystem
 import akka.cluster.sharding.ShardRegion
 import akka.cluster.sharding.ShardRegion.{ClusterShardingStats, GetClusterShardingStats, ShardRegionStats}
 import akka.routing.ActorRefRoutee
 import akka.testkit.{TestKit, TestProbe}
+import io.bernhardt.akka.locality.Locality
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
 import scala.collection.immutable.IndexedSeq
 
-class ShardLocalityAwareRoutingLogicSpec extends TestKit(ActorSystem("ShardLocalityAwareRoutingLogicSpec")) with WordSpecLike with Matchers with BeforeAndAfterAll {
+class ShardLocationAwareRoutingLogicSpec extends TestKit(ActorSystem("ShardLocalityAwareRoutingLogicSpec")) with WordSpecLike with Matchers with BeforeAndAfterAll {
 
-  import ShardLocalityAwareRoutingLogicSpec._
+  import ShardLocationAwareRoutingLogicSpec._
 
   "The ShardLocalityAwareRoutingLogic" should {
 
     "fall back to random routing when no sharding state is available" in {
+      Locality(system)
+
       val shardRegion = TestProbe("region")
       val routee1 = TestProbe("routee1")
       val routee2 = TestProbe("routee2")
       val allRoutees = IndexedSeq(routee1, routee2).map(r => ActorRefRoutee(r.ref))
 
-      val logic = ShardLocalityAwareRoutingLogic(system, shardRegion.ref, extractEntityId, extractShardId)
+      val logic = ShardLocationAwareRoutingLogic(system, shardRegion.ref, extractEntityId, extractShardId)
 
       val runs = 1000
       val selections = for(_ <- 1 to runs) yield {
@@ -40,6 +43,9 @@ class ShardLocalityAwareRoutingLogicSpec extends TestKit(ActorSystem("ShardLocal
       val system1 = ActorSystem("node1")
       val system2 = ActorSystem("node2")
       val system3 = ActorSystem("node3")
+      Locality(system1)
+      Locality(system2)
+      Locality(system3)
 
       val routee1 = TestProbe("routee1")(system1)
       val routee2 = TestProbe("routee2")(system2)
@@ -54,10 +60,11 @@ class ShardLocalityAwareRoutingLogicSpec extends TestKit(ActorSystem("ShardLocal
       val region3 = TestProbe("region3")(system3)
       val shards3 = for (i <- 21 to 30) yield i
 
-      val logic = ShardLocalityAwareRoutingLogic(system1, region1.ref, extractEntityId, extractShardId)
+      val logic = ShardLocationAwareRoutingLogic(system1, region1.ref, extractEntityId, extractShardId)
 
       // logic tries to get shard state
-      region1.expectMsgType[GetClusterShardingStats]
+      import scala.concurrent.duration._
+      region1.expectMsgType[GetClusterShardingStats](5.seconds)
       val monitor1 = region1.sender()
 
       monitor1 ! ClusterShardingStats(regions = Map(
@@ -92,7 +99,7 @@ class ShardLocalityAwareRoutingLogicSpec extends TestKit(ActorSystem("ShardLocal
     TestKit.shutdownActorSystem(system)
 }
 
-object ShardLocalityAwareRoutingLogicSpec {
+object ShardLocationAwareRoutingLogicSpec {
   final case class TestMessage(id: Int)
 
   val extractEntityId: ShardRegion.ExtractEntityId = {
