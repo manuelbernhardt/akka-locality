@@ -32,48 +32,51 @@ require to be passed elements from the sharding setup:
 
 ### Scala
 
-    import io.bernhardt.akka.locality.router._
+```scala
+val system: ActorSystem = ...
+val extractEntityId: ShardRegion.ExtractEntityId = ...
+val extractShardId: ShardRegion.ExtractShardId = ...
+val region: ActorRef = ...
 
-    val extractEntityId = ...
-    val extractShardId = ...
-    val region: ActorRef = ...
-
-    val router = system.actorOf(ClusterRouterGroup(ShardLocationAwareGroup(
-      routeePaths = Nil,
-      shardRegion = region,
-      extractEntityId = extractEntityId,
-      extractShardId = extractShardId
-    ), ClusterRouterGroupSettings(
-      totalInstances = 5,
-      routeesPaths = List("/user/routee"),
-      allowLocalRoutees = true
-    )).props(), "shard-location-aware-router")
+val router = system.actorOf(ClusterRouterGroup(ShardLocationAwareGroup(
+  routeePaths = Nil,
+  shardRegion = region,
+  extractEntityId = extractEntityId,
+  extractShardId = extractShardId
+), ClusterRouterGroupSettings(
+  totalInstances = 5,
+  routeesPaths = List("/user/routee"),
+  allowLocalRoutees = true
+)).props(), "shard-location-aware-router")
+```
 
 ### Java
 
-    ActorRef region = ...;
-    ShardRegion.MessageExtractor messageExtractor = ...;
-    int totalInstances = 5;
-    Iterable<String> routeesPaths = Collections.singletonList("/user/routee");
-    boolean allowLocalRoutees = true;
-    Set<String> useRoles = new HashSet<>(Arrays.asList("role"));
 
-    ActorRef router = getContext()
-            .actorOf(
-                    new ClusterRouterGroup(
-                            new ShardLocationAwareGroup(
-                                    routeesPaths,
-                                    region,
-                                    messageExtractor
-                            ),
-                            new ClusterRouterGroupSettings(
-                                    totalInstances,
-                                    routeesPaths,
-                                    allowLocalRoutees,
-                                    useRoles
-                            )
-                    ));
+```java
+ActorRef region = ...;
+ShardRegion.MessageExtractor messageExtractor = ...;
+int totalInstances = 5;
+Iterable<String> routeesPaths = Collections.singletonList("/user/routee");
+boolean allowLocalRoutees = true;
+Set<String> useRoles = new HashSet<>(Arrays.asList("role"));
 
+ActorRef router = getContext()
+        .actorOf(
+                new ClusterRouterGroup(
+                        new ShardLocationAwareGroup(
+                                routeesPaths,
+                                region,
+                                messageExtractor
+                        ),
+                        new ClusterRouterGroupSettings(
+                                totalInstances,
+                                routeesPaths,
+                                allowLocalRoutees,
+                                useRoles
+                        )
+                ));
+```
 
 Always make sure that:
 
