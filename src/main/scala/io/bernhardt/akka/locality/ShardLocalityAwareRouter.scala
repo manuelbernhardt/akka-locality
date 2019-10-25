@@ -199,7 +199,7 @@ final case class ShardLocalityAwareRoutingLogic(
 
 }
 
-private[locality] class ShardStateMonitor(shardRegion: ActorRef) extends Actor with ActorLogging {
+private[locality] class ShardStateMonitor(shardRegion: ActorRef) extends Actor with ActorLogging with Timers {
 
   import ShardStateMonitor._
 
@@ -207,7 +207,10 @@ private[locality] class ShardStateMonitor(shardRegion: ActorRef) extends Actor w
     context.system.settings.config.getString("akka.cluster.sharding.guardian-name")
 
   // TODO make configurable
-  private val ShardStateTimeout = Timeout(5.seconds)
+  val ShardStateTimeout = Timeout(5.seconds)
+
+  // TODO make configurable. This is conceptually the same thing as the safe-removal-margin of the SBR
+  val ShardStateUpdateMargin = 10.seconds
 
   var watchedShards = Set.empty[ShardId]
 
@@ -228,11 +231,14 @@ private[locality] class ShardStateMonitor(shardRegion: ActorRef) extends Actor w
     case Terminated(ref) =>
       log.debug("Watched shard actor {} terminated", ref)
       watchedShards -= encodeShardId(ref.path.name)
-      // TODO optimize this - buffer Terminated messages so as to not trigger a whole bunch of retries should the entire node have gone down
-      requestClusterShardingState()
+      // reset the timer - we only want to request state once things are stable
+      timers.cancel(UpdateClusterState)
+      timers.startSingleTimer(UpdateClusterState, UpdateClusterState, ShardStateUpdateMargin)
     case ClusterShardingStats(regions) =>
       notifyShardStateChanged(regions)
       watchShards(regions)
+    case UpdateClusterState =>
+      requestClusterShardingState()
   }
 
   def requestClusterShardingState(): Unit =
@@ -270,6 +276,7 @@ private[locality] class ShardStateMonitor(shardRegion: ActorRef) extends Actor w
 object ShardStateMonitor {
   final case object MonitorShards extends DeadLetterSuppression
   final case class ShardStateChanged(newState: Map[ShardId, Address]) extends DeadLetterSuppression
+  final case object UpdateClusterState
 
   private[locality] def props(shardRegion: ActorRef) = Props(new ShardStateMonitor(shardRegion))
 }

@@ -21,6 +21,7 @@ lazy val `akka-locality` = project
       "-target:jvm-1.8",
       "-encoding", "UTF-8"
     ),
+    parallelExecution in Test := false,
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-actor" % akkaVersion,
       "com.typesafe.akka" %% "akka-cluster-sharding" % akkaVersion,

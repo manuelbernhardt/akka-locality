@@ -1,14 +1,13 @@
 package io.bernhardt.akka.locality
 
 import akka.actor.{Actor, ActorRef, Address, Props}
-import akka.cluster.{Cluster, MultiNodeClusterSpec}
+import akka.cluster.Cluster
 import akka.cluster.routing.{ClusterRouterGroup, ClusterRouterGroupSettings}
 import akka.cluster.sharding.{MultiNodeClusterShardingConfig, MultiNodeClusterShardingSpec, ShardRegion}
 import akka.remote.testconductor.RoleName
 import akka.remote.testkit.STMultiNodeSpec
 import akka.routing.{GetRoutees, Routees}
 import akka.testkit.{DefaultTimeout, ImplicitSender, TestProbe}
-import com.typesafe.config.ConfigFactory
 import akka.pattern.ask
 import akka.serialization.jackson.CborSerializable
 
@@ -59,20 +58,6 @@ object ShardLocalityAwareRouterSpecConfig extends MultiNodeClusterShardingConfig
   val third = role("third")
   val fourth = role("fourth")
   val fifth = role("fifth")
-
-  commonConfig(ConfigFactory.parseString(
-    s"""
-    akka.loglevel = INFO
-    akka.actor.debug.lifecycle = on
-    akka.actor.provider = "cluster"
-    akka.cluster.sharding.state-store-mode = ddata
-    akka.cluster.sharding.updating-state-timeout = 1s
-    akka.cluster.sharding.distributed-data.durable.lmdb.dir = /tmp/ddata
-
-    akka.remote.use-passive-connections=off
-    """).withFallback(MultiNodeClusterSpec.clusterConfig))
-
-  testTransport(on = true)
 }
 
 class ShardLocalityAwareRouterSpecMultiJvmNode1 extends ShardLocalityAwareRouterSpec
@@ -90,6 +75,8 @@ class ShardLocalityAwareRouterSpec extends MultiNodeClusterShardingSpec(ShardLoc
   import ShardLocalityAwareRouterSpec._
 
   var region: Option[ActorRef] = None
+
+  var router: ActorRef = ActorRef.noSender
 
   def joinAndAllocate(node: RoleName, entityIds: Range): Unit = {
     within(10.seconds) {
@@ -125,6 +112,7 @@ class ShardLocalityAwareRouterSpec extends MultiNodeClusterShardingSpec(ShardLoc
     joinAndAllocate(fifth, (41 to 50))
 
     enterBarrier("shards-allocated")
+
   }
 
   "route by taking into account shard location" in {
@@ -134,7 +122,7 @@ class ShardLocalityAwareRouterSpec extends MultiNodeClusterShardingSpec(ShardLoc
         system.actorOf(Props(new TestRoutee(r)), "routee")
         enterBarrier("routee-started")
 
-        val router = system.actorOf(ClusterRouterGroup(ShardLocalityAwareGroup(
+        router = system.actorOf(ClusterRouterGroup(ShardLocalityAwareGroup(
           routeePaths = Nil,
           shardRegion = r,
           extractEntityId = extractEntityId,
@@ -187,9 +175,50 @@ class ShardLocalityAwareRouterSpec extends MultiNodeClusterShardingSpec(ShardLoc
 
   }
 
+  "adjust routing after a topology change" in {
+    awaitMemberRemoved(fourth)
+    awaitAllReachable()
+
+    runOn(first) {
+      // trigger rebalancing the shards of the removed node
+      val rebalanceProbe = TestProbe("rebalance")
+      for (i <- 31 to 40) {
+        rebalanceProbe.send(router, Ping(i, rebalanceProbe.ref))
+      }
+
+      // we should be receiving messages even in the absence of the updated shard location information
+      // random routing will kick in
+      val randomRoutedMessages: Seq[Pong] = rebalanceProbe.receiveN(10, 15.seconds).collect { case p: Pong => p }
+      val (_, differentMsgs) = partitionByAddress(randomRoutedMessages)
+      differentMsgs.nonEmpty shouldBe true
+
+      // now give the new shards time to be allocated and the router the time to retrieve new information
+      Thread.sleep(15000)
+
+      val probe = TestProbe("probe")
+      for (i <- 1 to 50) {
+        probe.send(router, Ping(i, probe.ref))
+      }
+
+      val msgs: Seq[Pong] = probe.receiveN(50, 15.seconds).collect { case p: Pong => p }
+
+      val (same: Seq[Pong], different) = msgs.partition { case Pong(_, _, routeeAddress, entityAddress) =>
+        routeeAddress.hostPort == entityAddress.hostPort && routeeAddress.hostPort.nonEmpty
+      }
+
+      different.isEmpty shouldBe true
+
+    }
+
+    enterBarrier("finished")
+  }
+
 
   def currentRoutees(router: ActorRef) =
     Await.result(router ? GetRoutees, timeout.duration).asInstanceOf[Routees].routees
 
+  def partitionByAddress(msgs: Seq[Pong]) = msgs.partition { case Pong(_, _, routeeAddress, entityAddress) =>
+    routeeAddress.hostPort == entityAddress.hostPort && routeeAddress.hostPort.nonEmpty
+  }
 
 }

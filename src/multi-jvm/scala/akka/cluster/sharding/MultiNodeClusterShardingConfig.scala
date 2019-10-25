@@ -5,10 +5,9 @@
 package akka.cluster.sharding
 
 import akka.cluster.MultiNodeClusterSpec
-import akka.persistence.journal.leveldb.SharedLeveldbJournal
 import akka.remote.testkit.MultiNodeConfig
 import akka.testkit.AkkaSpec
-import com.typesafe.config.{ Config, ConfigFactory }
+import com.typesafe.config.{Config, ConfigFactory}
 
 /**
  * A MultiNodeConfig for ClusterSharding. Implement the roles, etc. and create with the following:
@@ -53,7 +52,7 @@ abstract class MultiNodeClusterShardingConfig(
         map-size = 10 MiB
       }
       """))
-      .withFallback(SharedLeveldbJournal.configToEnableJavaSerializationForTest)
+//      .withFallback(SharedLeveldbJournal.configToEnableJavaSerializationForTest)
       .withFallback(MultiNodeClusterSpec.clusterConfig))
 
 }
