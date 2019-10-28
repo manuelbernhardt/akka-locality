@@ -7,6 +7,7 @@ lazy val `akka-locality` = project
   .enablePlugins(MultiJvmPlugin)
   .configs(MultiJvm)
   .settings(multiJvmSettings: _*)
+  .settings(publishingSettings: _*)
   .settings(
     name := "akka-locality",
     version := "1.0.0",
@@ -30,7 +31,6 @@ lazy val `akka-locality` = project
       "commons-io" % "commons-io" % "2.6" % Test,
       "org.scalatest" %% "scalatest" % "3.0.5" % Test
     ),
-    useGpg := true,
     credentials += Credentials(Path.userHome / ".sbt" / "sonatype_credential")
   )
 
