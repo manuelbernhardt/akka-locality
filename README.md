@@ -2,6 +2,22 @@
 
 This module provides constructs that help to make better use of the locality of actors within a clustered Akka system.
 
+### SBT
+
+```sbt
+libraryDependencies += "io.bernhardt" %% "akka-locality" % "1.0.0"
+```
+
+### Maven
+
+```xml
+<dependency>
+  <groupId>io.bernhardt</groupId>
+  <artifactId>akka-locality_2.12</artifactId>
+  <version>1.0.0</version>
+</dependency>
+```
+
 ## Shard location aware routers
 
 This type of router is useful for systems in which the routees of cluster-aware routers need to communicate with sharded 
