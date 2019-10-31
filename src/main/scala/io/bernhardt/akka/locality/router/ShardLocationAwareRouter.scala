@@ -154,13 +154,10 @@ final case class ShardLocationAwareRoutingLogic(
       def updateShardLocationAwareRoutees(): Map[Address, IndexedSeq[ShardLocationAwareRoutee]] = {
         val oldShardingRouteeTuple = shardLocationAwareRouteeRef.get()
         val (oldRoutees, oldShardLocationAwareRoutees) = oldShardingRouteeTuple
-        if (routees ne oldRoutees) {
-          val newShardLocationAwareRoutees = if (routees == oldRoutees) {
-            oldShardLocationAwareRoutees
-          } else {
-            val allRoutees = routees.map(ShardLocationAwareRoutee(_, selfAddress))
-            allRoutees.groupBy(_.address)
-          }
+        if ((routees ne oldRoutees) && routees != oldRoutees) {
+          val allRoutees = routees.map(ShardLocationAwareRoutee(_, selfAddress))
+          val newShardLocationAwareRoutees = allRoutees.groupBy(_.address)
+          // don't act on failure of compare and set, as the next call to select will update anyway if the routees remain different
           shardLocationAwareRouteeRef.compareAndSet(oldShardingRouteeTuple, (routees, newShardLocationAwareRoutees))
           newShardLocationAwareRoutees
         } else {
@@ -173,9 +170,9 @@ final case class ShardLocationAwareRoutingLogic(
 
       val candidateRoutees = for {
         location <- clusterShardingStateRef.get().get(shardId)
-        routees <- shardLocationAwareRoutees.get(location)
+        locationAwareRoutees <- shardLocationAwareRoutees.get(location)
       } yield {
-        val closeRoutees = routees.map(_.routee)
+        val closeRoutees = locationAwareRoutees.map(_.routee)
 
         // pick one of the local routees at random
         closeRoutees(ThreadLocalRandom.current.nextInt(closeRoutees.size))
@@ -223,7 +220,6 @@ private[locality] final case class ShardLocationAwareRoutee(routee: Routee, self
     routeeAddress match {
       case Address(_, system, None, None) => selfAddress.copy(system = system)
       case fullAddress               => fullAddress
-
     }
   }
 

@@ -13,6 +13,7 @@ lazy val `akka-locality` = project
     version := "1.0.0",
     startYear := Some(2019),
     scalaVersion := "2.12.6",
+    crossScalaVersions := Seq("2.12.6", "2.12.10", "2.13.01"),
     scalacOptions ++= Seq(
       "-unchecked",
       "-deprecation",
@@ -29,7 +30,7 @@ lazy val `akka-locality` = project
       "com.typesafe.akka" %% "akka-multi-node-testkit" % akkaVersion % Test,
       "org.iq80.leveldb" % "leveldb" % "0.12" % "optional;provided;multi-jvm;test",
       "commons-io" % "commons-io" % "2.6" % Test,
-      "org.scalatest" %% "scalatest" % "3.0.5" % Test
+      "org.scalatest" %% "scalatest" % "3.0.8" % Test
     ),
     credentials += Credentials(Path.userHome / ".sbt" / "sonatype_credential")
   )
