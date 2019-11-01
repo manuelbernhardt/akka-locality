@@ -1,7 +1,7 @@
 package io.bernhardt.akka.locality.router
 
 import java.util.concurrent.atomic.AtomicReference
-import java.util.concurrent.{ThreadLocalRandom, TimeUnit}
+import java.util.concurrent.{ ThreadLocalRandom, TimeUnit }
 
 import akka.actor._
 import akka.cluster.sharding.ShardRegion
@@ -9,7 +9,7 @@ import akka.cluster.sharding.ShardRegion._
 import akka.dispatch.Dispatchers
 import akka.event.Logging
 import akka.japi.Util.immutableSeq
-import akka.pattern.{AskTimeoutException, ask}
+import akka.pattern.{ ask, AskTimeoutException }
 import akka.routing._
 import akka.util.Timeout
 import io.bernhardt.akka.locality.LocalitySupervisor
@@ -31,12 +31,12 @@ object ShardLocationAwareRouter {
  */
 @SerialVersionUID(1L)
 final case class ShardLocationAwareGroup(
-  routeePaths: immutable.Iterable[String],
-  shardRegion: ActorRef,
-  extractEntityId: ShardRegion.ExtractEntityId,
-  extractShardId: ShardRegion.ExtractShardId,
-  override val routerDispatcher: String = Dispatchers.DefaultDispatcherId) extends Group {
-
+    routeePaths: immutable.Iterable[String],
+    shardRegion: ActorRef,
+    extractEntityId: ShardRegion.ExtractEntityId,
+    extractShardId: ShardRegion.ExtractShardId,
+    override val routerDispatcher: String = Dispatchers.DefaultDispatcherId)
+    extends Group {
   /**
    * Java API
    *
@@ -51,7 +51,7 @@ final case class ShardLocationAwareGroup(
       immutableSeq(routeePaths),
       shardRegion,
       ShardLocationAwareRouter.extractEntityIdFrom(messageExtractor),
-      extractShardId = msg => messageExtractor.shardId(msg),
+      extractShardId = msg => messageExtractor.shardId(msg)
     )
 
   /**
@@ -71,15 +71,15 @@ final case class ShardLocationAwareGroup(
  */
 @SerialVersionUID(1L)
 final case class ShardLocationAwarePool(
-  nrOfInstances: Int,
-  override val resizer: Option[Resizer] = None,
-  shardRegion: ActorRef,
-  extractEntityId: ShardRegion.ExtractEntityId,
-  extractShardId: ShardRegion.ExtractShardId,
-  override val supervisorStrategy: SupervisorStrategy = Pool.defaultSupervisorStrategy,
-  override val routerDispatcher: String = Dispatchers.DefaultDispatcherId,
-  override val usePoolDispatcher: Boolean = false) extends Pool {
-
+    nrOfInstances: Int,
+    override val resizer: Option[Resizer] = None,
+    shardRegion: ActorRef,
+    extractEntityId: ShardRegion.ExtractEntityId,
+    extractShardId: ShardRegion.ExtractShardId,
+    override val supervisorStrategy: SupervisorStrategy = Pool.defaultSupervisorStrategy,
+    override val routerDispatcher: String = Dispatchers.DefaultDispatcherId,
+    override val usePoolDispatcher: Boolean = false)
+    extends Pool {
   /**
    * Java API
    *
@@ -93,8 +93,7 @@ final case class ShardLocationAwarePool(
       nrOfInstances = nrOfInstances,
       shardRegion = shardRegion,
       extractEntityId = ShardLocationAwareRouter.extractEntityIdFrom(messageExtractor),
-      extractShardId = msg => messageExtractor.shardId(msg)
-    )
+      extractShardId = msg => messageExtractor.shardId(msg))
 
   /**
    * Setting the supervisor strategy to be used for the “head” Router actor.
@@ -130,24 +129,25 @@ final case class ShardLocationAwarePool(
  * @param extractShardId partial function to extract the shard id based on a message, should be the same as used for sharding
  */
 final case class ShardLocationAwareRoutingLogic(
-  system: ActorSystem,
-  shardRegion: ActorRef,
-  extractEntityId: ShardRegion.ExtractEntityId,
-  extractShardId: ShardRegion.ExtractShardId,
+    system: ActorSystem,
+    shardRegion: ActorRef,
+    extractEntityId: ShardRegion.ExtractEntityId,
+    extractShardId: ShardRegion.ExtractShardId
 ) extends RoutingLogic {
-
   import io.bernhardt.akka.locality.router.ShardStateMonitor._
   import system.dispatcher
 
   private lazy val log = Logging(system, getClass)
   private lazy val selfAddress = system.asInstanceOf[ExtendedActorSystem].provider.getDefaultAddress
   private val clusterShardingStateRef = new AtomicReference[Map[ShardId, Address]](Map.empty)
-  private val shardLocationAwareRouteeRef = new AtomicReference[(IndexedSeq[Routee], Map[Address, IndexedSeq[ShardLocationAwareRoutee]])]((IndexedSeq.empty, Map.empty))
+  private val shardLocationAwareRouteeRef =
+    new AtomicReference[(IndexedSeq[Routee], Map[Address, IndexedSeq[ShardLocationAwareRoutee]])](
+      (IndexedSeq.empty, Map.empty))
 
   watchShardStateChanges()
 
   override def select(message: Any, routees: IndexedSeq[Routee]): Routee = {
-    if(routees.isEmpty) {
+    if (routees.isEmpty) {
       NoRoutee
     } else {
       // avoid re-creating routees for each message by checking if they have changed
@@ -182,33 +182,32 @@ final case class ShardLocationAwareRoutingLogic(
         // if we couldn't figure out the location of the shard, fall back to random routing
         routees(ThreadLocalRandom.current.nextInt(routees.size))
       }
-
     }
   }
 
   private def watchShardStateChanges(): Unit = {
-    implicit val timeout: Timeout = Timeout(2^64, TimeUnit.DAYS)
+    implicit val timeout: Timeout = Timeout(2 ^ 64, TimeUnit.DAYS)
     val localitySel = system.actorSelection("/system/locality")
-    val change: Future[ShardStateChanged] = (localitySel ? LocalitySupervisor.MonitorShards(shardRegion)).mapTo[ShardStateChanged]
-    change.map { stateChanged =>
-      if(stateChanged.newState.nonEmpty) {
-        log.info("Updating cluster sharding state for {} shards", stateChanged.newState.keys.size)
-        clusterShardingStateRef.set(stateChanged.newState)
-        watchShardStateChanges()
+    val change: Future[ShardStateChanged] =
+      (localitySel ? LocalitySupervisor.MonitorShards(shardRegion)).mapTo[ShardStateChanged]
+    change
+      .map { stateChanged =>
+        if (stateChanged.newState.nonEmpty) {
+          log.info("Updating cluster sharding state for {} shards", stateChanged.newState.keys.size)
+          clusterShardingStateRef.set(stateChanged.newState)
+          watchShardStateChanges()
+        }
       }
-    }.recover {
-      case _: AskTimeoutException =>
+      .recover {
+        case _: AskTimeoutException =>
         // we were shutting down, ignore
-      case NonFatal(t) =>
-        log.warning("Could not monitor cluster sharding state: {}", t.getMessage)
-    }
+        case NonFatal(t) =>
+          log.warning("Could not monitor cluster sharding state: {}", t.getMessage)
+      }
   }
-
-
 }
 
 private[locality] final case class ShardLocationAwareRoutee(routee: Routee, selfAddress: Address) {
-
   // extract the address of the routee. In case of a LocalActorRef, host and port are not provided
   // therefore we fall back to the address of the local node
   val address = {
@@ -219,9 +218,7 @@ private[locality] final case class ShardLocationAwareRoutee(routee: Routee, self
 
     routeeAddress match {
       case Address(_, system, None, None) => selfAddress.copy(system = system)
-      case fullAddress               => fullAddress
+      case fullAddress                    => fullAddress
     }
   }
-
 }
-

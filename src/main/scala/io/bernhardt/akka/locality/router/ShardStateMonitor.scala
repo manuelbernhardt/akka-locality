@@ -2,16 +2,30 @@ package io.bernhardt.akka.locality.router
 
 import java.net.URLEncoder
 
-import akka.actor.{Actor, ActorIdentity, ActorLogging, ActorRef, Address, DeadLetterSuppression, Identify, Props, RootActorPath, Terminated, Timers}
-import akka.cluster.sharding.ShardRegion.{ClusterShardingStats, GetClusterShardingStats, ShardId, ShardRegionStats}
+import akka.actor.{
+  Actor,
+  ActorIdentity,
+  ActorLogging,
+  ActorRef,
+  Address,
+  DeadLetterSuppression,
+  Identify,
+  Props,
+  RootActorPath,
+  Terminated,
+  Timers
+}
+import akka.cluster.sharding.ShardRegion.{ ClusterShardingStats, GetClusterShardingStats, ShardId, ShardRegionStats }
 import io.bernhardt.akka.locality.LocalitySettings
 import io.bernhardt.akka.locality.LocalitySupervisor.MonitorShards
 
 /**
  * Internal: watches shard actors in order to trigger an update. Only trigger the update when the system is stable for a while.
  */
-private[locality] class ShardStateMonitor(shardRegion: ActorRef, settings: LocalitySettings) extends Actor with ActorLogging with Timers {
-
+private[locality] class ShardStateMonitor(shardRegion: ActorRef, settings: LocalitySettings)
+    extends Actor
+    with ActorLogging
+    with Timers {
   import ShardStateMonitor._
 
   val ClusterGuardianName: String =
@@ -21,10 +35,10 @@ private[locality] class ShardStateMonitor(shardRegion: ActorRef, settings: Local
 
   var routerLogic: ActorRef = context.system.deadLetters
 
-  def receive: Receive =  {
+  def receive: Receive = {
     case _: MonitorShards =>
       routerLogic = sender()
-      if(watchedShards.isEmpty) {
+      if (watchedShards.isEmpty) {
         requestClusterShardingState()
       }
     case UpdateClusterState =>
@@ -48,23 +62,24 @@ private[locality] class ShardStateMonitor(shardRegion: ActorRef, settings: Local
   def requestClusterShardingState(): Unit =
     shardRegion ! GetClusterShardingStats(settings.RetrieveShardStateTimeout)
 
-
   def watchShards(regions: Map[Address, ShardRegionStats]): Unit = {
     val encodedRegionName = shardRegion.path.name
-    regions.foreach { case (address, regionStats) =>
-      val regionPath = RootActorPath(address) / "system" / ClusterGuardianName / encodedRegionName
-      regionStats.stats.keys.filterNot(watchedShards).foreach { shardId =>
-        val shardPath = regionPath / encodeShardId(shardId)
-        context.actorSelection(shardPath) ! Identify(shardId)
-      }
+    regions.foreach {
+      case (address, regionStats) =>
+        val regionPath = RootActorPath(address) / "system" / ClusterGuardianName / encodedRegionName
+        regionStats.stats.keys.filterNot(watchedShards).foreach { shardId =>
+          val shardPath = regionPath / encodeShardId(shardId)
+          context.actorSelection(shardPath) ! Identify(shardId)
+        }
     }
   }
 
   def notifyShardStateChanged(regions: Map[Address, ShardRegionStats]): Unit = {
     val shardsByAddress = regions.flatMap {
       case (address, ShardRegionStats(shards)) =>
-        shards.map { case (shardId, _) =>
-          shardId -> address
+        shards.map {
+          case (shardId, _) =>
+            shardId -> address
         }
     }
     routerLogic ! ShardStateChanged(shardsByAddress)
@@ -84,4 +99,3 @@ object ShardStateMonitor {
   private[locality] def props(shardRegion: ActorRef, settings: LocalitySettings) =
     Props(new ShardStateMonitor(shardRegion, settings))
 }
-
