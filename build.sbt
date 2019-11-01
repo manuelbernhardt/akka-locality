@@ -12,8 +12,8 @@ lazy val `akka-locality` = project
     name := "akka-locality",
     version := "1.0.1-SNAPSHOT",
     startYear := Some(2019),
-    scalaVersion := "2.12.7",
-    crossScalaVersions := Seq("2.12.7", "2.12.10", "2.13.01"),
+    scalaVersion := "2.12.10",
+    crossScalaVersions := Seq("2.12.10", "2.13.1"),
     scalacOptions ++= Seq(
       "-unchecked",
       "-deprecation",
