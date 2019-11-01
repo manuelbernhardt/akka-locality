@@ -92,7 +92,7 @@ ActorRef router = getContext()
                                 routeesPaths,
                                 region,
                                 messageExtractor
-                        ),
+                        ).props(),
                         new ClusterRouterGroupSettings(
                                 totalInstances,
                                 routeesPaths,
