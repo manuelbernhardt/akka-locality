@@ -51,8 +51,7 @@ final case class ShardLocationAwareGroup(
       immutableSeq(routeePaths),
       shardRegion,
       ShardLocationAwareRouter.extractEntityIdFrom(messageExtractor),
-      extractShardId = msg => messageExtractor.shardId(msg)
-    )
+      extractShardId = msg => messageExtractor.shardId(msg))
 
   /**
    * Setting the dispatcher to be used for the router head actor,  which handles
@@ -111,6 +110,14 @@ final case class ShardLocationAwarePool(
    */
   def withDispatcher(dispatcherId: String): ShardLocationAwarePool = copy(routerDispatcher = dispatcherId)
 
+  /**
+   * Setting whether to use a dedicated dispatcher for the routees of the pool.
+   * The dispatcher is defined in 'pool-dispatcher' configuration property in the
+   * deployment section of the router.
+   */
+  def usePoolDispatcher(usePoolDispatcher: Boolean): ShardLocationAwarePool =
+    copy(usePoolDispatcher = usePoolDispatcher)
+
   override def createRouter(system: ActorSystem): Router =
     new Router(ShardLocationAwareRoutingLogic(system, shardRegion, extractEntityId, extractShardId))
 
@@ -132,8 +139,8 @@ final case class ShardLocationAwareRoutingLogic(
     system: ActorSystem,
     shardRegion: ActorRef,
     extractEntityId: ShardRegion.ExtractEntityId,
-    extractShardId: ShardRegion.ExtractShardId
-) extends RoutingLogic {
+    extractShardId: ShardRegion.ExtractShardId)
+    extends RoutingLogic {
   import io.bernhardt.akka.locality.router.ShardStateMonitor._
   import system.dispatcher
 

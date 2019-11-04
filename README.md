@@ -5,7 +5,7 @@ This module provides constructs that help to make better use of the locality of 
 ### SBT
 
 ```sbt
-libraryDependencies += "io.bernhardt" %% "akka-locality" % "1.0.0"
+libraryDependencies += "io.bernhardt" %% "akka-locality" % "1.1.0-SNAPSHOT"
 ```
 
 ### Maven
@@ -37,18 +37,20 @@ In order to use these routers, the `Locality` extension must be started:
 
 ```scala
 import io.bernhardt.akka.locality._
+import akka.actor.ActorSystem
 
-val system: ActorSystem = ...
-Locality(system)
+val system: ActorSystem = ActorSystem("system")
+val locality = Locality(system)
 ```
 
 ### Java
 
 ```java
 import io.bernhardt.akka.locality;
+import akka.actor.ActorSystem;
 
-ActorSystem system = ...;
-Locality.get(system);
+ActorSystem system = ActorSystem.create("system");
+Locality locality = Locality.get(system);
 ```
     
 You can then use the group or pool routers as a cluster-aware router. These routers must be declared in code, as they
@@ -57,12 +59,19 @@ require to be passed elements from the sharding setup:
 ### Scala
 
 ```scala
-val system: ActorSystem = ...
-val extractEntityId: ShardRegion.ExtractEntityId = ...
-val extractShardId: ShardRegion.ExtractShardId = ...
-val region: ActorRef = ...
+import akka.actor.{ActorSystem, ActorRef}
+import akka.cluster.sharding.ShardRegion
+import akka.cluster.routing._
 
-val router = system.actorOf(ClusterRouterGroup(ShardLocationAwareGroup(
+import io.bernhardt.akka.locality.Locality
+
+val system: ActorSystem = ActorSystem("system")
+val locality: Locality = Locality(system)
+val extractEntityId: ShardRegion.ExtractEntityId = ???
+val extractShardId: ShardRegion.ExtractShardId = ???
+val region: ActorRef = ???
+
+val router = system.actorOf(ClusterRouterGroup(locality.shardLocationAwareGroup(
   routeePaths = Nil,
   shardRegion = region,
   extractEntityId = extractEntityId,
@@ -78,6 +87,12 @@ val router = system.actorOf(ClusterRouterGroup(ShardLocationAwareGroup(
 
 
 ```java
+import akka.actor.ActorSystem;
+import akka.actor.ActorRef;
+import akka.cluster.sharding.ShardRegion;
+import akka.cluster.routing.ClusterRouterGroup;
+import akka.cluster.routing.ClusterRouterGroupSettings;
+
 ActorRef region = ...;
 ShardRegion.MessageExtractor messageExtractor = ...;
 int totalInstances = 5;
@@ -85,21 +100,20 @@ Iterable<String> routeesPaths = Collections.singletonList("/user/routee");
 boolean allowLocalRoutees = true;
 Set<String> useRoles = new HashSet<>(Arrays.asList("role"));
 
-ActorRef router = getContext()
-        .actorOf(
-                new ClusterRouterGroup(
-                        new ShardLocationAwareGroup(
-                                routeesPaths,
-                                region,
-                                messageExtractor
-                        ).props(),
-                        new ClusterRouterGroupSettings(
-                                totalInstances,
-                                routeesPaths,
-                                allowLocalRoutees,
-                                useRoles
-                        )
-                ));
+ActorRef router = system.actorOf(
+    new ClusterRouterGroup(
+        locality.shardLocationAwareGroup(
+            routeesPaths,
+            region,
+            messageExtractor
+        ),
+        new ClusterRouterGroupSettings(
+            totalInstances,
+            routeesPaths,
+            allowLocalRoutees,
+            useRoles
+        )
+    ).props(), "shard-location-aware-router");
 ```
 
 Always make sure that:

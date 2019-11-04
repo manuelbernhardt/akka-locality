@@ -10,7 +10,7 @@ lazy val `akka-locality` = project
   .settings(publishingSettings: _*)
   .settings(
     name := "akka-locality",
-    version := "1.0.1-SNAPSHOT",
+    version := "1.1.0-SNAPSHOT",
     startYear := Some(2019),
     scalaVersion := "2.12.10",
     crossScalaVersions := Seq("2.12.10", "2.13.1"),
