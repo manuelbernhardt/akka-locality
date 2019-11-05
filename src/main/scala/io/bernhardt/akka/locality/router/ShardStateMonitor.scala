@@ -37,6 +37,7 @@ private[locality] class ShardStateMonitor(shardRegion: ActorRef, settings: Local
 
   def receive: Receive = {
     case _: MonitorShards =>
+      log.debug("Starting to monitor shards for logic {}", routerLogic.path)
       routerLogic = sender()
       if (watchedShards.isEmpty) {
         requestClusterShardingState()
@@ -55,6 +56,7 @@ private[locality] class ShardStateMonitor(shardRegion: ActorRef, settings: Local
       timers.cancel(UpdateClusterState)
       timers.startSingleTimer(UpdateClusterState, UpdateClusterState, settings.ShardStateUpdateMargin)
     case ClusterShardingStats(regions) =>
+      log.debug("Received cluster sharding stats for {} regions", regions.size)
       notifyShardStateChanged(regions)
       watchShards(regions)
   }
