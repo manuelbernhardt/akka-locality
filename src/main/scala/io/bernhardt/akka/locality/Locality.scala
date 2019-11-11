@@ -104,14 +104,15 @@ private[locality] final class LocalitySupervisor(settings: LocalitySettings) ext
 
   def receive: Receive = {
     case m @ MonitorShards(region) =>
+      val regionName = encodeRegionName(region)
       context
-        .child(region.path.name)
+        .child(regionName)
         .map { monitor =>
           monitor.forward(m)
         }
         .getOrElse {
-          log.info("Starting to monitor shards of region {}", region.path.name)
-          context.actorOf(ShardStateMonitor.props(region, settings), region.path.name).forward(m)
+          log.info("Starting to monitor shards of region {}", regionName)
+          context.actorOf(ShardStateMonitor.props(region, regionName, settings), regionName).forward(m)
         }
   }
 }

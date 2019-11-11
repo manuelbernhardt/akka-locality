@@ -10,6 +10,7 @@ import akka.remote.testkit.STMultiNodeSpec
 import akka.routing.{GetRoutees, Routees}
 import akka.serialization.jackson.CborSerializable
 import akka.testkit.{DefaultTimeout, ImplicitSender, TestProbe}
+import com.typesafe.config.ConfigFactory
 import io.bernhardt.akka.locality.Locality
 
 import scala.concurrent.Await
@@ -53,7 +54,14 @@ object ShardLocationAwareRouterSpec {
 }
 
 
-object ShardLocationAwareRouterSpecConfig extends MultiNodeClusterShardingConfig {
+object ShardLocationAwareRouterSpecConfig extends MultiNodeClusterShardingConfig(
+  overrides = ConfigFactory.parseString(
+  """akka.cluster.sharding.distributed-data.majority-min-cap = 2
+    |akka.cluster.distributed-data.gossip-interval = 200 ms
+    |akka.cluster.distributed-data.notify-subscribers-interval = 200 ms
+    |akka.cluster.sharding.updating-state-timeout = 500 ms
+    |akka.locality.shard-state-update-margin = 1000 ms
+    |""".stripMargin)) {
   val first = role("first")
   val second = role("second")
   val third = role("third")
@@ -196,9 +204,8 @@ class ShardLocationAwareRouterSpec extends MultiNodeClusterShardingSpec(ShardLoc
       differentMsgs.nonEmpty shouldBe true
 
       // now give time to the new shards to be allocated and time to the router to retrieve new information
-      // TODO find a better way to determine that the router is ready
-
-      Thread.sleep(10000)
+      // one second to send out the update shard information and one second of safety margin
+      Thread.sleep(2000)
 
       val probe = TestProbe("probe")
       for (i <- 1 to 50) {
