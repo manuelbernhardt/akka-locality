@@ -5,7 +5,7 @@ This module provides constructs that help to make better use of the locality of 
 ### SBT
 
 ```sbt
-libraryDependencies += "io.bernhardt" %% "akka-locality" % "1.1.0-SNAPSHOT"
+libraryDependencies += "io.bernhardt" %% "akka-locality" % "1.1.0"
 ```
 
 ### Maven
@@ -14,7 +14,7 @@ libraryDependencies += "io.bernhardt" %% "akka-locality" % "1.1.0-SNAPSHOT"
 <dependency>
   <groupId>io.bernhardt</groupId>
   <artifactId>akka-locality_2.12</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
 </dependency>
 ```
 
