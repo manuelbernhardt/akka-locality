@@ -186,7 +186,7 @@ final case class ShardLocationAwareRoutingLogic(
       }
 
       candidateRoutees.getOrElse {
-        log.warning("Falling back to random routing for message in shard {}", shardId)
+        log.debug("Falling back to random routing for message in shard {}", shardId)
         // if we couldn't figure out the location of the shard, fall back to random routing
         routees(ThreadLocalRandom.current.nextInt(routees.size))
       }
@@ -200,11 +200,6 @@ final case class ShardLocationAwareRoutingLogic(
       (localitySel ? LocalitySupervisor.MonitorShards(shardRegion)).mapTo[ShardStateChanged]
     change
       .map { stateChanged =>
-        log.info("")
-        log.info("STATE CHANGED")
-        log.info(s"${stateChanged}")
-        log.info("")
-
         if (stateChanged.newState.nonEmpty) {
           log.info("Updating cluster sharding state for {} shards", stateChanged.newState.keys.size)
           clusterShardingStateRef.set(stateChanged.newState)

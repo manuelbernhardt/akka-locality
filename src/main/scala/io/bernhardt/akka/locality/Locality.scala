@@ -133,4 +133,9 @@ final case class LocalitySettings(config: Config) {
     FiniteDuration(
       localityConfig.getDuration("shard-state-update-margin", TimeUnit.MILLISECONDS),
       TimeUnit.MILLISECONDS)
+
+  val ShardStatePollingInterval =
+    FiniteDuration(
+      localityConfig.getDuration("shard-state-polling-interval", TimeUnit.MILLISECONDS),
+      TimeUnit.MILLISECONDS)
 }

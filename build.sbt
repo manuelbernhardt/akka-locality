@@ -23,8 +23,8 @@ lazy val `akka-locality` = project
     ),
     parallelExecution in Test := false,
     libraryDependencies ++= Seq(
-      "com.typesafe.akka" %% "akka-actor" % akkaVersion,
-      "com.typesafe.akka" %% "akka-cluster-sharding" % akkaVersion,
+      "com.typesafe.akka" %% "akka-actor" % akkaVersion % "provided;multi-jvm;test",
+      "com.typesafe.akka" %% "akka-cluster-sharding" % akkaVersion % "provided;multi-jvm;test",
       "com.typesafe.akka" %% "akka-persistence" % akkaVersion % Test,
       "com.typesafe.akka" %% "akka-testkit" % akkaVersion % Test,
       "com.typesafe.akka" %% "akka-multi-node-testkit" % akkaVersion % Test,

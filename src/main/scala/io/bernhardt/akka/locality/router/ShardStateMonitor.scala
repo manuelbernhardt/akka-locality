@@ -33,15 +33,32 @@ private[locality] class ShardStateMonitor(shardRegion: ActorRef, encodedRegionNa
 
   var routerLogic: ActorRef = context.system.deadLetters
 
+  var latestClusterState: Option[ClusterShardingStats] = None
+
+  // technically, this may also just be a node that was terminated
+  // but if the coordinator does its job, it will rebalance / reallocate the terminated shards
+  // either way, this flag signals that the topology is currently changing
+  var rebalanceInProgress: Boolean = false
+
   def receive: Receive = {
     case _: MonitorShards =>
       log.debug("Starting to monitor shards for logic {}", routerLogic.path)
       routerLogic = sender()
-      if (watchedShards.isEmpty) {
+      requestClusterShardingState()
+      timers.startPeriodicTimer(UpdateClusterState, UpdateClusterState, settings.ShardStatePollingInterval)
+      context.become(watchingChanges)
+  }
+
+  def watchingChanges: Receive = {
+    case _: MonitorShards =>
+      routerLogic = sender()
+    case UpdateClusterStateOnRebalance =>
+      rebalanceInProgress = false
+      requestClusterShardingState()
+    case UpdateClusterState =>
+      if (!rebalanceInProgress) {
         requestClusterShardingState()
       }
-    case UpdateClusterState =>
-      requestClusterShardingState()
     case ActorIdentity(shardId: ShardId, Some(ref)) =>
       log.debug("Now watching shard {}", ref.path)
       context.watch(ref)
@@ -50,17 +67,26 @@ private[locality] class ShardStateMonitor(shardRegion: ActorRef, encodedRegionNa
       log.warning("Could not watch shard {}, shard location aware routing may not work", shardId)
     case Terminated(ref) =>
       log.debug("Watched shard actor {} terminated", ref.path)
+      rebalanceInProgress = true
       watchedShards -= encodeShardId(ref.path.name)
       // reset the timer - we only want to request state once things are stable
-      timers.cancel(UpdateClusterState)
-      timers.startSingleTimer(UpdateClusterState, UpdateClusterState, settings.ShardStateUpdateMargin)
-    case ClusterShardingStats(regions) =>
+      timers.cancel(UpdateClusterStateOnRebalance)
+      timers.startSingleTimer(
+        UpdateClusterStateOnRebalance,
+        UpdateClusterStateOnRebalance,
+        settings.ShardStateUpdateMargin)
+    case stats @ ClusterShardingStats(regions) =>
       log.debug("Received cluster sharding stats for {} regions", regions.size)
-      if (regions.isEmpty) {
-        log.warning("Cluster Sharding Stats empty - locality-aware routing will not function correctly")
+      if (!latestClusterState.contains(stats)) {
+        log.debug("Cluster sharding state changed, notifying subscriber")
+        latestClusterState = Some(stats)
+        if (regions.isEmpty) {
+          log.warning("Cluster Sharding Stats empty - locality-aware routing will not function correctly")
+        } else {
+          notifyShardStateChanged(regions)
+          watchShards(regions)
+        }
       }
-      notifyShardStateChanged(regions)
-      watchShards(regions)
   }
 
   def requestClusterShardingState(): Unit = {
@@ -98,6 +124,7 @@ private[locality] class ShardStateMonitor(shardRegion: ActorRef, encodedRegionNa
 object ShardStateMonitor {
   final case class ShardStateChanged(newState: Map[ShardId, Address]) extends DeadLetterSuppression
   final case object UpdateClusterState extends DeadLetterSuppression
+  final case object UpdateClusterStateOnRebalance extends DeadLetterSuppression
 
   private[locality] def props(shardRegion: ActorRef, entityName: String, settings: LocalitySettings) =
     Props(new ShardStateMonitor(shardRegion, entityName, settings))

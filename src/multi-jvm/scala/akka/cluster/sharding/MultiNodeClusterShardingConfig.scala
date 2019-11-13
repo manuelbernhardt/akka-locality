@@ -51,6 +51,7 @@ abstract class MultiNodeClusterShardingConfig(
         dir = $targetDir/sharding-ddata
         map-size = 10 MiB
       }
+      akka.actor.allow-java-serialization = on
       """))
 //      .withFallback(SharedLeveldbJournal.configToEnableJavaSerializationForTest)
       .withFallback(MultiNodeClusterSpec.clusterConfig))

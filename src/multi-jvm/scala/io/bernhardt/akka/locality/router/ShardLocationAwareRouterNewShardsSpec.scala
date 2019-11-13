@@ -1,14 +1,12 @@
 package io.bernhardt.akka.locality.router
 
-import akka.actor.{Actor, ActorRef, Address, Props}
-import akka.cluster.Cluster
+import akka.actor.{ActorRef, Props}
 import akka.cluster.routing.{ClusterRouterGroup, ClusterRouterGroupSettings}
-import akka.cluster.sharding.{MultiNodeClusterShardingConfig, MultiNodeClusterShardingSpec, ShardRegion}
+import akka.cluster.sharding.{MultiNodeClusterShardingConfig, MultiNodeClusterShardingSpec}
 import akka.pattern.ask
 import akka.remote.testconductor.RoleName
 import akka.remote.testkit.STMultiNodeSpec
 import akka.routing.{GetRoutees, Routees}
-import akka.serialization.jackson.CborSerializable
 import akka.testkit.{DefaultTimeout, ImplicitSender, TestProbe}
 import com.typesafe.config.ConfigFactory
 import io.bernhardt.akka.locality.Locality
@@ -16,51 +14,14 @@ import io.bernhardt.akka.locality.Locality
 import scala.concurrent.Await
 import scala.concurrent.duration._
 
-object ShardLocationAwareRouterSpec {
-
-  class TestEntity extends Actor {
-    val cluster = Cluster(context.system)
-    def receive: Receive = {
-
-      case ping: Ping =>
-        sender() ! Pong(ping.id, ping.sender, cluster.selfAddress, cluster.selfAddress)
-    }
-  }
-
-  final case class Ping(id: Int, sender: ActorRef) extends CborSerializable
-  final case class Pong(id: Int, sender: ActorRef, routeeAddress: Address, entityAddress: Address) extends CborSerializable
-
-  val extractEntityId: ShardRegion.ExtractEntityId = {
-    case msg@Ping(id, _) => (id.toString, msg)
-    case msg@Pong(id, _, _, _) => (id.toString, msg)
-  }
-
-  val extractShardId: ShardRegion.ExtractShardId = {
-    // take this simplest mapping on purpose
-    case Ping(id, _) => id.toString
-    case Pong(id, _, _, _) => id.toString
-  }
-
-  class TestRoutee(region: ActorRef) extends Actor {
-    val cluster = Cluster(context.system)
-    def receive: Receive = {
-      case msg: Ping =>
-        region ! msg
-      case pong: Pong =>
-        pong.sender ! pong.copy(routeeAddress = cluster.selfAddress)
-    }
-  }
-
-}
-
-
-object ShardLocationAwareRouterSpecConfig extends MultiNodeClusterShardingConfig(
+object ShardLocationAwareRouterNewShardsSpecConfig extends MultiNodeClusterShardingConfig(
   overrides = ConfigFactory.parseString(
   """akka.cluster.sharding.distributed-data.majority-min-cap = 2
     |akka.cluster.distributed-data.gossip-interval = 200 ms
     |akka.cluster.distributed-data.notify-subscribers-interval = 200 ms
     |akka.cluster.sharding.updating-state-timeout = 500 ms
     |akka.locality.shard-state-update-margin = 1000 ms
+    |akka.locality.shard-state-polling-interval = 2000 ms
     |""".stripMargin)) {
   val first = role("first")
   val second = role("second")
@@ -69,19 +30,19 @@ object ShardLocationAwareRouterSpecConfig extends MultiNodeClusterShardingConfig
   val fifth = role("fifth")
 }
 
-class ShardLocationAwareRouterSpecMultiJvmNode1 extends ShardLocationAwareRouterSpec
-class ShardLocationAwareRouterSpecMultiJvmNode2 extends ShardLocationAwareRouterSpec
-class ShardLocationAwareRouterSpecMultiJvmNode3 extends ShardLocationAwareRouterSpec
-class ShardLocationAwareRouterSpecMultiJvmNode4 extends ShardLocationAwareRouterSpec
-class ShardLocationAwareRouterSpecMultiJvmNode5 extends ShardLocationAwareRouterSpec
+class ShardLocationAwareRouterNewShardsSpecMultiJvmNode1 extends ShardLocationAwareRouterNewShardsSpec
+class ShardLocationAwareRouterNewShardsSpecMultiJvmNode2 extends ShardLocationAwareRouterNewShardsSpec
+class ShardLocationAwareRouterNewShardsSpecMultiJvmNode3 extends ShardLocationAwareRouterNewShardsSpec
+class ShardLocationAwareRouterNewShardsSpecMultiJvmNode4 extends ShardLocationAwareRouterNewShardsSpec
+class ShardLocationAwareRouterNewShardsSpecMultiJvmNode5 extends ShardLocationAwareRouterNewShardsSpec
 
-class ShardLocationAwareRouterSpec extends MultiNodeClusterShardingSpec(ShardLocationAwareRouterSpecConfig)
+class ShardLocationAwareRouterNewShardsSpec extends MultiNodeClusterShardingSpec(ShardLocationAwareRouterNewShardsSpecConfig)
   with STMultiNodeSpec
   with DefaultTimeout
   with ImplicitSender {
 
+  import ShardLocationAwareRouterNewShardsSpecConfig._
   import ShardLocationAwareRouterSpec._
-  import ShardLocationAwareRouterSpecConfig._
 
   var region: Option[ActorRef] = None
 
@@ -163,19 +124,6 @@ class ShardLocationAwareRouterSpec extends MultiNodeClusterShardingSpec(ShardLoc
           }
 
           different.isEmpty shouldBe true
-
-          val byAddress = same.groupBy(_.routeeAddress)
-
-          byAddress(first).size shouldBe 10
-          byAddress(first).map(_.id).toSet shouldEqual (1 to 10).toSet
-          byAddress(second).size shouldBe 10
-          byAddress(second).map(_.id).toSet shouldEqual (11 to 20).toSet
-          byAddress(third).size shouldBe 10
-          byAddress(third).map(_.id).toSet shouldEqual (21 to 30).toSet
-          byAddress(fourth).size shouldBe 10
-          byAddress(fourth).map(_.id).toSet shouldEqual (31 to 40).toSet
-          byAddress(fifth).size shouldBe 10
-          byAddress(fifth).map(_.id).toSet shouldEqual (41 to 50).toSet
         }
         enterBarrier("test-done")
 
@@ -186,44 +134,45 @@ class ShardLocationAwareRouterSpec extends MultiNodeClusterShardingSpec(ShardLoc
 
   }
 
-  "adjust routing after a topology change" in {
-    awaitMemberRemoved(fourth)
-    awaitAllReachable()
-
+  "route randomly when new shards are created" in {
     runOn(first) {
-      // trigger rebalancing the shards of the removed node
-      val rebalanceProbe = TestProbe("rebalance")
-      for (i <- 31 to 40) {
-        rebalanceProbe.send(router, Ping(i, rebalanceProbe.ref))
-      }
-
-      // we should be receiving messages even in the absence of the updated shard location information
-      // random routing should kick in, i.e. we won't have perfect matches
-      val randomRoutedMessages: Seq[Pong] = rebalanceProbe.receiveN(10, 15.seconds).collect { case p: Pong => p }
-      val (_, differentMsgs) = partitionByAddress(randomRoutedMessages)
-      differentMsgs.nonEmpty shouldBe true
-
-      // now give time to the new shards to be allocated and time to the router to retrieve new information
-      // one second to send out the update shard information and one second of safety margin
-      Thread.sleep(2000)
-
       val probe = TestProbe("probe")
-      for (i <- 1 to 50) {
+      for (i <- 51 to 100) {
         probe.send(router, Ping(i, probe.ref))
       }
 
-      val msgs: Seq[Pong] = probe.receiveN(50, 15.seconds).collect { case p: Pong => p }
+      val msgs: Seq[Pong] = probe.receiveN(50).collect { case p: Pong => p }
+
+      val (_, different) = msgs.partition { case Pong(_, _, routeeAddress, entityAddress) =>
+        routeeAddress.hostPort == entityAddress.hostPort && routeeAddress.hostPort.nonEmpty
+      }
+
+      different.isEmpty shouldBe false
+    }
+    enterBarrier("test-done")
+  }
+
+  "route with location awareness after the update margin has elapsed" in {
+
+    Thread.sleep(4000)
+
+    runOn(first) {
+      val probe = TestProbe("probe")
+      for (i <- 51 to 100) {
+        probe.send(router, Ping(i, probe.ref))
+      }
+
+      val msgs: Seq[Pong] = probe.receiveN(50).collect { case p: Pong => p }
 
       val (_, different) = msgs.partition { case Pong(_, _, routeeAddress, entityAddress) =>
         routeeAddress.hostPort == entityAddress.hostPort && routeeAddress.hostPort.nonEmpty
       }
 
       different.isEmpty shouldBe true
-
     }
-
-    enterBarrier("finished")
+    enterBarrier("test-done")
   }
+
 
 
   def currentRoutees(router: ActorRef) =
@@ -232,5 +181,6 @@ class ShardLocationAwareRouterSpec extends MultiNodeClusterShardingSpec(ShardLoc
   def partitionByAddress(msgs: Seq[Pong]) = msgs.partition { case Pong(_, _, routeeAddress, entityAddress) =>
     routeeAddress.hostPort == entityAddress.hostPort && routeeAddress.hostPort.nonEmpty
   }
+
 
 }

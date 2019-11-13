@@ -189,13 +189,13 @@ class ShardLocationAwareRouterWithProxySpec
 
         val byAddress = same.groupBy(_.routeeAddress)
 
-        awaitAssert { byAddress(first).size shouldBe 10 }
+        byAddress(first).size shouldBe 10
         byAddress(first).map(_.id).toSet shouldEqual (1 to 10).toSet
-        awaitAssert { byAddress(second).size shouldBe 10 }
+        byAddress(second).size shouldBe 10
         byAddress(second).map(_.id).toSet shouldEqual (11 to 20).toSet
-        awaitAssert { byAddress(third).size shouldBe 10 }
+        byAddress(third).size shouldBe 10
         byAddress(third).map(_.id).toSet shouldEqual (21 to 30).toSet
-        awaitAssert { byAddress(fourth).size shouldBe 10 }
+        byAddress(fourth).size shouldBe 10
         byAddress(fourth).map(_.id).toSet shouldEqual (31 to 40).toSet
       }
       enterBarrier("test-done")
