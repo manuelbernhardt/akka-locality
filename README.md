@@ -1,6 +1,7 @@
 # akka-locality
 
 This module provides constructs that help to make better use of the locality of actors within a clustered Akka system.
+For a full explanation of the problem it addresses, [check out this article](https://manuel.bernhardt.io/2019/10/28/one-step-closer-exploiting-locality-in-akka-cluster-based-systems/)
 
 ### SBT
 
